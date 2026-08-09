@@ -1,82 +1,127 @@
-# MATRIX — standalone
+# LATTICE
 
-A block sequencer that runs entirely in the browser. Clicks, pops, beeps and
-low-end, arranged as fixed loops chained per voice, with a cap on how many
-sound at once and a hard re-align that pulls the odd lengths back into phase.
+A pattern launcher for clicks, tones and sub-bass, with a generative visualiser. It runs entirely in the browser, works on a phone, and has no dependencies — the whole instrument is one `index.html` file.
 
-No install, no server. One file. Works on iPhone.
+Eight voices, five patterns each. Tap a block to loop it. Patterns run at independent lengths and never re-align, so what you get is polyrhythm and drift rather than a grid.
 
-## Host it on GitHub Pages
+---
 
-1. Make a repo, put `index.html` at its root.
-2. Settings → Pages → Source: **Deploy from a branch**, branch `main`, folder
-   `/ (root)`.
-3. Give it a minute, then open `https://<you>.github.io/<repo>/` on the phone.
+## Getting sound
 
-That's the whole deployment. It's a static page — nothing to build.
+Open the page and tap once to start the audio, then press **RUN**.
 
-## First run
+On iPhone, check the ring/silent switch is off — iOS mutes browser audio otherwise. Headphones or a decent speaker are worth it; two of the eight voices sit below what a phone speaker can reproduce.
 
-Tap the opening screen once. Browsers only allow audio to start from a real
-touch, so that tap is what unlocks the audio engine. After that, **Run** (or the
-space bar on a keyboard) starts the sequencer.
+---
 
-**Use headphones.** The SUB and GROWL voices run below 40 Hz, which a phone
-speaker cannot reproduce at all — on the built-in speaker they will be
-inaudible while still using up the headroom. On headphones or a monitor they're
-the whole bottom end.
+## The grid
 
-## What it is
+Each row is a voice, each block a pattern. Colour runs from cyan at the top of the spectrum to deep magenta at the bottom, so a row's colour tells you roughly where it sits.
 
-Two tiers per voice. A **pool** of up to eight fixed blocks (A–H), each a loop
-of 1–64 steps. A **chain** of slots that plays those blocks in order, each slot
-with a repeat count and an on/off toggle. Blocks repeat across slots, which is
-where structure comes from; they never change unless you regenerate them.
+| | |
+|---|---|
+| **Tap a block** | Loops it. Tap again to stop. |
+| **Long-press a block** | Solos it — every other voice stops on the same beat. |
+| **Square at the row's right edge** | Arms that row for the dice. Filled means included. |
 
-The top panel is the arrangement — ten voices, blocks drawn at true width in
-bars. Solid is the editable first pass, dimmed is the repeat, hollow is a slot
-switched off, magenta is sounding now, a magenta right-edge means the re-align
-cuts that block short. Tap a block to toggle it.
+Launches land on the next beat, so you can commit early and it will arrive in time. A playing block fills with its own loop phase, so eight blocks sweeping at eight different rates is the polyrhythm made visible.
 
-Below: the block editor (tap or drag across the grid to place hits), a
-per-voice **Generate** tab (algorithm, density, allowed lengths, pool and chain
-size — trigs only by default, everything else opt-in), a **Chain** editor, and
-a per-step inspector.
+Selections made while stopped survive pressing RUN — set up a combination, then start it all at once.
 
-**Cap** limits simultaneous voices; the mode next to it decides who wins when
-more want in than the cap allows. **Re-align** resets every chain to its start
-every N bars, and the `∞` button on a voice exempts it so it runs long against
-the others.
+### Bottom bar
 
-Full behaviour is in the SuperCollider build's README; the model is identical.
+**1SHOT** arms the next launch to play a single cycle, then disarms itself.
 
-## Differences from the SuperCollider build
+**PIN** arms the next tap to pin a block. Pinned blocks survive rerolls, dice rolls and reloads. The count shows how many you have.
 
-- **Synthesis is Web Audio**, not SynthDefs. The voices are close but not
-  sample-identical — the FM growl and the rung-filter click are approximations
-  of the SC originals.
-- **No microtiming.** The per-step micro offsets are gone here; the browser
-  scheduler is a lookahead design and negative offsets aren't worth the added
-  latency on a phone. Everything else — conditional trigs, retrigs, p-locks,
-  probability — is intact.
-- **Drag-to-paint on the arrangement** isn't supported on touch; tap to toggle
-  blocks. Dragging across the step grid does work on touch.
+**CLEAR** stops every voice. (Distinct from the transport's STOP, which halts the clock but keeps your selection.)
 
-## Known limits
+**⚄** rolls the dice over every armed row. **P** rerolls patterns, **V** rerolls sounds, **ALL** does both. Pinned blocks are never touched.
 
-- **iOS mute switch:** the page promotes itself to media playback so the
-  physical silent switch shouldn't kill the audio, but iOS versions vary. If
-  it's silent, check the switch and the volume.
-- **The screen may sleep** mid-performance. iOS has no reliable web API to
-  prevent this; for a fixed installation, disable auto-lock in Settings.
-- **State is saved to the browser** (localStorage), per device. There's no
-  export yet. Clearing site data wipes your patterns.
-- **Heavy retrigs on long voices** stack synths; a limiter catches the level
-  but the CPU on an older phone may not keep up. Back off retrig counts on SUB
-  and SWELL if it stutters.
+Rolls aren't arbitrary. Frequencies snap to the ISO third-octave series — the values real test tones use — and each row is confined to its own band, so the spectrum stays balanced however hard you roll. Pattern generation follows the rolled decay: a voice rolled to 2 ms gets dense material, one rolled to two seconds gets single hits and long gaps.
 
-## Editing the sound
+---
 
-The voice builders are in `buildVoice()` inside `index.html`, one `case` per
-engine. They're plain Web Audio graphs — oscillators, filters, a shared tanh
-waveshaper for drive. Change one and reload.
+## VOICE
+
+Sound design per voice. Pick one of eight engines — CLICK, POP, BEEP, NOISE, TONE, SUB, GROWL, SWELL — then an envelope shape:
+
+- **PERC** — decays from the hit
+- **GATE** — flat, then a hard cut
+- **REVERSE** — swells into the hit
+
+Sliders for frequency, decay, tone, drive, level, pan and stereo. **STEREO** alternates successive hits across the field, retriggers included, which is where most of the sense of movement comes from.
+
+Changes take effect on the next hit while it's running. **TEST** auditions the current voice. Per-voice and global resets are at the bottom, along with a full wipe of saved data.
+
+---
+
+## SCENES
+
+A scene captures everything: all eight sounds, all forty patterns, and what was playing. Tap a tile to recall it — one tap swaps the entire performance, landing on the next beat.
+
+Tiles show a fingerprint of what they contain: one line per playing voice, drawn from that voice's actual triggers, in its register colour. A dense high scene looks like bright hatching; a sub-and-growl scene is a couple of sparse marks.
+
+Scenes adopt the current tempo rather than restoring one, so you can chain material recorded at different speeds.
+
+**Long-press a tile** to rename it, set its follow action, or delete it.
+
+### Chaining
+
+**CHAIN** arms follow actions. Each scene can play for ⅛, ¼, ½, 1, 2, 4, 8, 16 or 32 bars — or **RND**, which picks a new length every time the scene comes up — then STAY, jump to the NEXT scene, a RANDom one, or a specific one.
+
+Chained transitions land on the interval's own grid, so a ⅛-bar chain snaps to ⅛ bars rather than waiting for a downbeat. The live tile shows bars remaining and a progress line.
+
+Recall overwrites the current patterns and sounds. Save before you recall.
+
+### FX
+
+Nine pads at the bottom of the page. **Hold to apply, drag up for depth, release to drop.**
+
+| | |
+|---|---|
+| **FILTER** | Resonant lowpass sweep |
+| **DELAY** | Tempo-synced dotted eighth |
+| **SPACE** | Convolution reverb |
+| **GATE** | Chops at 8ths, 16ths or 32nds depending on depth |
+| **CRUSH** | Down to 2-bit at full |
+| **REPEAT** | Captures a fraction of a beat and loops it |
+| **TAPE** | Reads the buffer back at a falling rate |
+| **PITCH** | ±1 octave |
+| **REVERSE** | Plays the recent past backwards |
+
+**LOCK** makes the pads latch — tap on, tap off. Unlocking drops everything held. **PANIC** kills the FX and stops every voice.
+
+REPEAT, TAPE, PITCH and REVERSE share one buffer, so holding several stacks them: release the top and it falls back to the one underneath. If your browser can't load the audio worklet these four grey themselves out; the rest still work.
+
+---
+
+## VIS
+
+A generative visualiser driven by what's actually playing. Not a readout — the audio is the force acting on the form.
+
+Eight forms, or AUTO to let it choose: **SQUARES** (eight different layouts, from concentric through scattered to split), **QUADS**, **BARS** (five modes from hairlines to full-bleed slabs), **WIRE**, **BUILD**, **DIAMOND**, **SEGMENTS** (polygons drawn only in fragments, so the eye completes them).
+
+**BUILD** is the one that develops. Every hit places a vertex and joins it to its neighbours — the voice's row sets its height, its amplitude sets its distance from centre — and edges draw themselves visibly from one vertex toward the other. Six different joining strategies, from nearest-neighbour to mirrored to lattice. A scene change clears it and it starts assembling again.
+
+How the audio drives it:
+
+- The three low rows push zoom and flip the contrast
+- The mid rows kick rotation
+- **Ratchets fracture the frame** — it shears apart along clean planes as repeats accumulate, and reassembles the moment they stop
+- The noise row seeds diffuse clouds
+- Scene changes reshuffle the geometry and throw a sweep, often a crash zoom, sometimes a disintegration
+
+Nine parameters: SCALE, ROTATE, ZOOM, FRACTURE, DISSOLVE, TEXTURE, CONTRAST, TRAIL, COLOUR. Colour is rationed by default — everything is white on black with hue used as accents. Turn COLOUR to zero for pure monochrome, or INVERT for black on white.
+
+**FULL** hides the interface for projecting; tap anywhere to bring it back. Tapping the canvas otherwise reshuffles the geometry.
+
+---
+
+## Notes
+
+Pinned patterns, voice settings, scenes and visualiser preferences are stored in the browser on the device you're using. Nothing is uploaded anywhere. Clearing site data clears them; the VOICE page has a wipe button for the same job.
+
+Runs in any current browser with Web Audio. The four buffer-based effects need AudioWorklet support (Safari 14.5+, Chrome 66+, Firefox 76+) and degrade gracefully without it.
+
+Everything is scheduled ahead with a lookahead clock, so it stays in time under load. If the visualiser is open and things start to feel loose, DISSOLVE and TEXTURE are the expensive parameters.
