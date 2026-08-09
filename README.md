@@ -74,6 +74,12 @@ Chained transitions land on the interval's own grid, so a ⅛-bar chain snaps to
 
 Recall overwrites the current patterns and sounds. Save before you recall.
 
+### Full auto
+
+**FULL AUTO** runs the instrument by itself. It moves on an interval that changes every time, and mostly *invents* the next scene rather than recalling one — a random number of voices, fresh sounds on some of them, fresh patterns on others. Roughly a third of the time it drops one of your saved scenes in instead. Pinned blocks are still protected.
+
+It's the fastest way to find material worth keeping: let it run, and hit SAVE when something lands.
+
 ### FX
 
 Nine pads at the bottom of the page. **Hold to apply, drag up for depth, release to drop.**
@@ -114,7 +120,19 @@ How the audio drives it:
 
 Nine parameters: SCALE, ROTATE, ZOOM, FRACTURE, DISSOLVE, TEXTURE, CONTRAST, TRAIL, COLOUR. Colour is rationed by default — everything is white on black with hue used as accents. Turn COLOUR to zero for pure monochrome, or INVERT for black on white.
 
-**FULL** hides the interface for projecting; tap anywhere to bring it back. Tapping the canvas otherwise reshuffles the geometry.
+### Touch
+
+The canvas is playable. A touch drops a vertex into the model wherever your finger lands, and dragging leaves a trail of them, so you can draw structure into the geometry by hand.
+
+Dragging also moves the frame — orbit, zoom, spin or scale — and a flick throws a rotational sweep proportional to how fast you let go. Two fingers start it disintegrating. A quick tap does something on its own: another node, a noise cloud, a crash zoom, a fracture, a sweep, or a reshuffle.
+
+Every touch draws itself in registration marks: a square opening from the contact point with crosshair ticks, a measured line while you drag, a coloured node marker where each vertex lands, and an expanding double square naming whatever a tap fired. Global actions also flash brackets at the four corners. These are drawn on top and are unaffected by TRAIL, so contact is legible however dense the frame gets.
+
+**Which gesture does what is reassigned every time the geometry reshuffles.** Drag axes swap, directions invert, the tap action changes. It isn't meant to be learnable — it's meant to keep surprising you. The on-screen labels tell you what just happened.
+
+Touches also trigger haptics on devices that support the Vibration API — Android Chrome and similar. Safari has never implemented it, so there's no vibration on iPhone or iPad.
+
+**Double-tap** toggles full screen for projecting.
 
 ---
 
