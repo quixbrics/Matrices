@@ -228,12 +228,25 @@ button.wide.danger.sure{color:var(--pend);border-color:var(--pend)}
 #tunesec[hidden]{display:none}
 #rootrow{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;flex:1;min-width:0}
 #moderow{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;flex:1;min-width:0}
+#octrow{padding:2px 0 0}
+#octrow .sl{padding:8px 0 2px;border-top:0}
+#octrow .sl .hd b{color:var(--dim)}
+#octrow .sl input{height:34px}
+#octrow .sl input::-webkit-slider-thumb{height:22px;margin-top:-11px}
+#octrow .sl input::-moz-range-thumb{height:22px}
+#octspan{color:var(--dim);font-size:8px;letter-spacing:.1em;padding:2px 0 6px}
 #rootrow button{padding:9px 0;font-size:8px;letter-spacing:0;border:1px solid var(--line2);min-width:0}
 #moderow button{padding:9px 1px;font-size:7px;letter-spacing:0;border:1px solid var(--line2);
   min-width:0;overflow:hidden;white-space:nowrap}
 #rootrow button.sel,#moderow button.sel{background:var(--pend);color:#000;border-color:var(--pend)}
 #fxxrow button.sel{background:var(--now);color:#000;border-color:var(--now)}
 #fxyrow button.sel{background:var(--held);color:#000;border-color:var(--held)}
+#padenv{padding:2px 0 4px}
+#padenv .sl{padding:8px 0 2px;border-top:0}
+#padenv .sl .hd b{color:var(--dim)}
+#padenv .sl input{height:34px}
+#padenv .sl input::-webkit-slider-thumb{height:22px;margin-top:-11px}
+#padenv .sl input::-moz-range-thumb{height:22px}
 #fxrack{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 0 0}
 #fxhint{color:#333;font-size:9px;letter-spacing:.05em;padding:10px 0 6px;line-height:1.7}
 
@@ -316,13 +329,16 @@ button.wide.danger.sure{color:var(--pend);border-color:var(--pend)}
 <div id="tunesec" hidden>
   <div class="fxa"><span class="lab">ROOT</span><div id="rootrow"></div></div>
   <div class="fxa"><span class="lab">SCALE</span><div id="moderow"></div></div>
+  <div id="octrow"></div>
 </div>
 
 <div id="fxsec">
   <div class="fxa"><span class="lab">PAD&nbsp;X</span><div id="fxxrow"></div></div>
   <div class="fxa"><span class="lab">PAD&nbsp;Y</span><div id="fxyrow"></div></div>
+  <div id="padenv"></div>
   <div id="fxrack"></div>
-  <div id="fxhint">PAD X AND Y ARE WHAT THE VISUALISER&rsquo;S FX GESTURE DRIVES.</div>
+  <div id="fxhint">PAD X AND Y ARE WHAT THE VISUALISER&rsquo;S FX GESTURE DRIVES.
+    ATTACK AND RELEASE SHAPE HOW THE PAD ARRIVES AND LEAVES.</div>
 </div>
 
 <div id="toast" hidden></div>
@@ -443,6 +459,64 @@ function applyScale(){
   PK.tuning=TUNING;
   saveVoices();
 }
+/* ---- octave range ----
+   On a tonal pack the row bands are a starting point, not the law: a global
+   range redistributes all eight rows inside it, keeping them in register order
+   so the colour ramp and the low/mid/high visual mapping stay honest. Without
+   this the top rows sit wherever the pack author put them, which on a drone
+   pack means piercing. */
+/* Octave 0 is A3 at 220 Hz, so the sliders span A0 to A6 - six octaves, which
+   is the whole useful range for these packs and no more. */
+const OCTREF=220, OCTMIN=-3, OCTMAX=3;
+const octHz=n=>OCTREF*Math.pow(2,n);
+const octName=n=>{
+  const names=['A0','A1','A2','A3','A4','A5','A6'];
+  return names[Math.round(n)-OCTMIN]||'';
+};
+function rangeOf(){
+  const lo=Math.min(S.octLo,S.octHi-1), hi=Math.max(S.octHi,S.octLo+1);
+  return {lo:octHz(lo),hi:octHz(hi)};
+}
+/* Row i gets a window around its own position in the range, wide enough to
+   overlap its neighbours so rolls still move. */
+function effBand(i){
+  const d=VOICES[i];
+  if(!PK.tonal||!PK.rangeable) return d.band;
+  const R=rangeOf();
+  const span=Math.log2(R.hi/R.lo);
+  /* Windows sit inside the range rather than straddling its edges, so the
+     stated ceiling is the actual ceiling. */
+  let half=Math.min(0.45,Math.max(0.22,span/(NV-1)*0.8));
+  if(span-2*half<=0.1) half=span/3;
+  const inner=span-2*half;
+  const t=(NV-1-i)/Math.max(1,NV-1);            /* row 0 is the top */
+  const centre=R.lo*Math.pow(2,half+inner*t);
+  return [Math.max(R.lo,centre/Math.pow(2,half)),
+          Math.min(R.hi,centre*Math.pow(2,half))];
+}
+/* Moving the range retunes what is already playing rather than waiting for the
+   next roll - otherwise the control appears to do nothing. */
+function applyRange(save){
+  if(!PK.tonal||!PK.rangeable) return;
+  for(let i=0;i<NV;i++){
+    const d=VOICES[i], r=VRANGE[d.eng]||VRANGE[0], b=effBand(i);
+    let lo=Math.max(r.freq[0],b[0]), hi=Math.min(r.freq[1],b[1]);
+    if(!(hi>lo)){ lo=b[0]; hi=b[1]; }
+    const pool=TUNING.filter(x=>x>=lo&&x<=hi);
+    if(!pool.length) continue;
+    /* keep the pitch class, move the octave */
+    let best=pool[0],bd=1e9;
+    pool.forEach(x=>{
+      const oct=Math.abs(Math.log2(x/d.freq));
+      const cls=Math.abs(((Math.log2(x/d.freq)%1)+1.5)%1-0.5);
+      const score=cls*3+oct*0.15;
+      if(score<bd){ bd=score; best=x; }
+    });
+    d.freq=best;
+  }
+  if(save!==false) saveVoices();
+  if(!document.getElementById('vpage').hidden) paintVoicePage();
+}
 /* The interval walk: successive rolls step by a diatonic interval rather than
    landing anywhere in the row's band. */
 let lastDeg=null;
@@ -480,6 +554,7 @@ function packId(){
 function applyPack(id){
   PK=PACKS[PACKS[id]?id:'lattice'];
   VOICES=PK.voices.map(v=>Object.assign({},v));
+  if(PK.oct){ S.octLo=PK.oct[0]; S.octHi=PK.oct[1]; }
   VDEF=VOICES.map(v=>Object.assign({},v));
   ENGNAMES=PK.engines.slice();
   SHAPES=PK.shapes.slice();
@@ -640,7 +715,7 @@ const S={
   bpm:120, master:0.72, running:false, dmode:'ALL',
   chain:false, follow:null, auto:false, fxLock:false,
   dens:0.5, vmax:NV, vrank:null, dmask:null, dmask2:null, dmask3:null,
-  fxX:'crush', fxY:'gate', root:9, mode:'AEOLIAN',
+  fxX:'crush', fxY:'gate', padAtk:0, padRel:0.18, root:9, mode:'AEOLIAN', octLo:-2, octHi:1,
   v:Array.from({length:NV},(_,i)=>({
     pats:[],
     act:-1, pend:null, pendAt:0, stopAt:0, sel:false,
@@ -684,7 +759,8 @@ const VFIELDS=['eng','freq','dec','tone','drive','amp','pan','pp','shape'];
 function saveVoices(){
   try{
     localStorage.setItem(VKEY(),JSON.stringify({
-      fxX:S.fxX, fxY:S.fxY, root:S.root, mode:S.mode,
+      fxX:S.fxX, fxY:S.fxY, padAtk:S.padAtk, padRel:S.padRel,
+      root:S.root, mode:S.mode, octLo:S.octLo, octHi:S.octHi,
       v:VOICES.map(v=>{ const o={}; VFIELDS.forEach(k=>o[k]=v[k]); return o; })
     }));
   }catch(e){}
@@ -698,6 +774,10 @@ function loadVoices(){
     if(typeof j.fxY==='string') S.fxY=j.fxY;
     if(typeof j.root==='number') S.root=Math.max(0,Math.min(11,j.root|0));
     if(typeof j.mode==='string'&&SCALES[j.mode]) S.mode=j.mode;
+    if(typeof j.padAtk==='number') S.padAtk=Math.max(0,Math.min(1,j.padAtk));
+    if(typeof j.padRel==='number') S.padRel=Math.max(0,Math.min(1,j.padRel));
+    if(typeof j.octLo==='number') S.octLo=Math.max(OCTMIN,Math.min(OCTMAX-1,j.octLo));
+    if(typeof j.octHi==='number') S.octHi=Math.max(S.octLo+1,Math.min(OCTMAX,j.octHi));
     const a=j.v;
     a.forEach((o,i)=>{ if(i<NV&&o) VFIELDS.forEach(k=>{ if(typeof o[k]==='number') VOICES[i][k]=o[k]; }); });
     for(let i=0;i<NV;i++) VOICES[i].name=ENGNAMES[VOICES[i].eng]||'?';
@@ -725,7 +805,12 @@ const rlog=(a,b)=>a*Math.pow(b/a,Math.random());
 const rlin=(a,b)=>a+Math.random()*(b-a);
 function rollVoiceSound(i){
   const d=VOICES[i], r=VRANGE[d.eng]||VRANGE[0];
-  const lo=Math.max(r.freq[0],d.band[0]), hi=Math.min(r.freq[1],d.band[1]);
+  const b=effBand(i);
+  /* Prefer the engine's own frequency limits, but if they do not overlap the
+     requested octave range then the range wins - it is the explicit control,
+     and an empty intersection would otherwise silently widen the window. */
+  let lo=Math.max(r.freq[0],b[0]), hi=Math.min(r.freq[1],b[1]);
+  if(!(hi>lo)){ lo=b[0]; hi=b[1]; }
   d.freq =PK.tonal
     ? scaleFreq(Math.min(lo,hi),Math.max(lo,hi))
     : snapISO(rlog(Math.min(lo,hi),Math.max(lo,hi)),Math.min(lo,hi),Math.max(lo,hi));
@@ -992,6 +1077,25 @@ function audioInit(){
   AE.revFar=c.createGain();  AE.revFar.gain.value=0;
   AE.revDamp=c.createBiquadFilter(); AE.revDamp.type='lowpass';
   AE.revDamp.frequency.value=PK.fx.revDamp||5200;
+  /* Pre-delay separates the source from its space; without it a long tail just
+     smothers the note that caused it. */
+  AE.revPre=c.createDelay(0.3); AE.revPre.delayTime.value=PK.fx.revPre||0.02;
+  /* A slowly modulated delay on the way in detunes the tail against itself.
+     This is what makes a long reverb read as ethereal rather than as mud. */
+  AE.revMod=c.createDelay(0.05); AE.revMod.delayTime.value=0.012;
+  AE.revLfo=c.createOscillator(); AE.revLfo.type='sine';
+  AE.revLfo.frequency.value=PK.fx.revRate||0.23;
+  AE.revLfoG=c.createGain(); AE.revLfoG.gain.value=0;
+  AE.revLfo.connect(AE.revLfoG); AE.revLfoG.connect(AE.revMod.delayTime);
+  try{ AE.revLfo.start(); }catch(e){}
+  /* Wet output, so depth can push the space past the source rather than just
+     alongside it. */
+  AE.revWet=c.createGain(); AE.revWet.gain.value=1;
+  /* Feedback needs a DelayNode in the cycle or Web Audio mutes the loop. */
+  AE.revFbD=c.createDelay(0.5); AE.revFbD.delayTime.value=0.11;
+  AE.revFb=c.createGain(); AE.revFb.gain.value=0;
+  /* The dry path is now a gain, so the reverb can duck it. */
+  AE.dry=c.createGain(); AE.dry.gain.value=1;
 
   AE.master=c.createGain(); AE.master.gain.value=S.master;
   AE.limiter=c.createDynamicsCompressor();
@@ -1021,11 +1125,14 @@ function audioInit(){
   AE.dly.connect(AE.dlyTone); AE.dlyTone.connect(AE.dlyFb); AE.dlyFb.connect(AE.dly);
   AE.dly.connect(AE.master);
   AE.fxOut.connect(AE.revSend);
-  AE.revSend.connect(AE.rev);  AE.rev.connect(AE.revNear);
-  AE.revSend.connect(AE.rev2); AE.rev2.connect(AE.revFar);
+  AE.revSend.connect(AE.revPre); AE.revPre.connect(AE.revMod);
+  AE.revMod.connect(AE.rev);  AE.rev.connect(AE.revNear);
+  AE.revMod.connect(AE.rev2); AE.rev2.connect(AE.revFar);
   AE.revNear.connect(AE.revDamp); AE.revFar.connect(AE.revDamp);
-  AE.revDamp.connect(AE.master);
-  AE.fxOut.connect(AE.master);
+  AE.revDamp.connect(AE.revWet); AE.revWet.connect(AE.master);
+  AE.revDamp.connect(AE.revFbD); AE.revFbD.connect(AE.revFb);
+  AE.revFb.connect(AE.revPre);
+  AE.fxOut.connect(AE.dry); AE.dry.connect(AE.master);
 
   AE.master.connect(AE.limiter); AE.limiter.connect(AE.analyser);
   AE.analyser.connect(c.destination);
@@ -1064,12 +1171,19 @@ function fxSet(id,depth,first){
       AE.dlyFb.gain.setTargetAtTime(0.28+d*0.42,t,0.02);
       break;
     case 'verb':{
-      const far=Math.max(0,Math.min(1,(d-0.30)/0.70));
-      AE.revSend.gain.setTargetAtTime(d*0.85,t,0.03);
-      AE.revNear.gain.setTargetAtTime(1-far*0.85,t,0.08);
-      AE.revFar.gain.setTargetAtTime(far,t,0.08);
+      const far=Math.max(0,Math.min(1,(d-0.22)/0.78));
+      const F=PK.fx;
+      AE.revSend.gain.setTargetAtTime(0.35+d*0.75,t,0.03);
+      /* the near room stays in under the far tail rather than crossfading out,
+         so the top of the control is both, not a swap */
+      AE.revNear.gain.setTargetAtTime(1-far*0.55,t,0.10);
+      AE.revFar.gain.setTargetAtTime(far,t,0.10);
+      AE.revWet.gain.setTargetAtTime(1+d*d*((F.wetMax||1.5)-1),t,0.10);
+      AE.dry.gain.setTargetAtTime(1-d*(F.dryDuck||0.2),t,0.10);
+      AE.revFb.gain.setTargetAtTime(d*d*(F.revFb||0),t,0.15);
+      AE.revLfoG.gain.setTargetAtTime((F.revShimmer||0)*(0.3+d*0.7),t,0.15);
       AE.revDamp.frequency.setTargetAtTime(
-        (PK.fx.revDamp||5200)*(0.45+d*0.55),t,0.08);
+        (F.revDamp||5200)*(0.45+d*0.55),t,0.08);
       break;
     }
     case 'pitch':{
@@ -1131,6 +1245,12 @@ function fxOff(id){
     case 'dly':  AE.dlySend.gain.setTargetAtTime(0,t,0.08); break;
     case 'verb':
       AE.revSend.gain.setTargetAtTime(0,t,PK.fx.revRelease||0.12);
+      AE.dry.gain.setTargetAtTime(1,t,0.15);
+      /* the wet stage and the feedback stay up briefly so the tail blooms out
+         instead of being cut off at the moment you let go */
+      AE.revWet.gain.setTargetAtTime(1,t,(PK.fx.revRelease||0.12)*2);
+      AE.revFb.gain.setTargetAtTime(0,t,(PK.fx.revRelease||0.12)*1.5);
+      AE.revLfoG.gain.setTargetAtTime(0,t,0.4);
       break;
     case 'gate': AE.gate.gain.setTargetAtTime(1,t,0.01); if(AE.gAmt) AE.gAmt.gain.setTargetAtTime(0,t,0.01); break;
     case 'crush':AE.crushWet.gain.setTargetAtTime(0,t,0.03); AE.crushDry.gain.setTargetAtTime(1,t,0.03); break;
@@ -1467,8 +1587,13 @@ function setBpm(n){
 }
 
 /* ===================== meter & phase ===================== */
+let padT=0;
 function meterLoop(){
   AE.meterRAF=requestAnimationFrame(meterLoop);
+  const nowMs=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  const dt=padT?Math.min(0.1,(nowMs-padT)/1000):0.016;
+  padT=nowMs;
+  fxPadTick(dt);
   if(!AE.analyser) return;
   AE.analyser.getFloatTimeDomainData(AE.meterBuf);
   let peak=0;
@@ -1962,9 +2087,31 @@ function paintFxAvail(){
     if(b) b.classList.toggle('na',na);
   });
 }
+const OCTEL={};
 function paintScale(){
+  if(OCTEL.octLo){
+    ['octLo','octHi'].forEach(k=>{
+      const e=OCTEL[k]; if(!e) return;
+      e.inp.value=S[k];
+      e.val.textContent=(S[k]>0?'+':'')+S[k]+'  '+octHz(S[k]).toFixed(octHz(S[k])<100?1:0)+' Hz';
+    });
+    if(OCTEL.span){
+      const r=rangeOf();
+      OCTEL.span.textContent=octName(S.octLo)+' \u2013 '+octName(S.octHi)+
+        '  \u00b7  '+(S.octHi-S.octLo)+' OCTAVES';
+    }
+  }
   document.querySelectorAll('#rootrow button').forEach(b=>b.classList.toggle('sel',+b.dataset.r===S.root));
   document.querySelectorAll('#moderow button').forEach(b=>b.classList.toggle('sel',b.dataset.m===S.mode));
+}
+const PADEL={};
+function paintPadEnv(){
+  ['padAtk','padRel'].forEach(k=>{
+    const e=PADEL[k]; if(!e) return;
+    e.inp.value=Math.round(S[k]*1000);
+    const sec=padSec(S[k],e.max);
+    e.val.textContent=sec<=0?'INSTANT':(sec<1?(sec*1000).toFixed(0)+' ms':sec.toFixed(2)+' s');
+  });
 }
 function paintFxAssign(){
   document.querySelectorAll('#fxxrow button').forEach(b=>b.classList.toggle('sel',b.dataset.f===S.fxX));
@@ -2458,28 +2605,66 @@ function visXY(clientX,clientY){
 }
 /* REPEAT re-captures the tape whenever its length changes, so on a moving pad
    it must be rate limited or it stutters continuously. */
+/* The pad has its own envelope. Rather than retuning every effect's internal
+   smoothing, the DEPTH is ramped: touching sweeps it up over ATTACK, lifting
+   sweeps it back over RELEASE. At zero both are instant, which is the old
+   behaviour; wound up, the pad becomes a slow swell and a long fall. */
+const PAD_ATK_MAX=4.0, PAD_REL_MAX=8.0;
+const padSec=(v,max)=>v<=0.005?0:Math.pow(v,2)*max;
 let fxPadLast=0;
+const PAD={held:0,tx:0,ty:0,cx:0,cy:0,on:0,ax:null,ay:null,acc:0};
 function fxPad(clientX,clientY,phase){
   const xy=visXY(clientX,clientY);
-  const ax=S.fxX, ay=S.fxY;
   if(phase==='down'){
     audioInit(); ensureRunning();
     fxPadLast=0;
-    if(ax) fxOn(ax,Math.max(0.02,xy.x));
-    if(ay&&ay!==ax) fxOn(ay,Math.max(0.02,xy.y));
+    PAD.ax=S.fxX; PAD.ay=S.fxY;
+    PAD.tx=xy.x; PAD.ty=xy.y;
+    if(!PAD.on){                       /* re-touching mid-release keeps its level */
+      PAD.cx=0; PAD.cy=0;
+      if(PAD.ax) fxOn(PAD.ax,0.02);
+      if(PAD.ay&&PAD.ay!==PAD.ax) fxOn(PAD.ay,0.02);
+      PAD.on=1;
+    }
+    PAD.held=1; PAD.acc=99;
     VIS.fxHeld=1; paintFx();
+    if(padSec(S.padAtk,PAD_ATK_MAX)<=0) fxPadTick(0.016,true);
   } else if(phase==='move'){
-    const t=Date.now();
-    const slow=(ax==='rpt'||ay==='rpt');
-    if(slow&&t-fxPadLast<140) return;
-    fxPadLast=t;
-    if(ax) fxMove(ax,Math.max(0.02,xy.x));
-    if(ay&&ay!==ax) fxMove(ay,Math.max(0.02,xy.y));
-    paintFx();
+    PAD.tx=xy.x; PAD.ty=xy.y;
+    if(padSec(S.padAtk,PAD_ATK_MAX)<=0) fxPadTick(0.016,true);
   } else {
-    if(ax) fxOff(ax);
-    if(ay&&ay!==ax) fxOff(ay);
+    PAD.held=0; PAD.tx=0; PAD.ty=0;
     VIS.fxHeld=0; paintFx();
+    if(padSec(S.padRel,PAD_REL_MAX)<=0) fxPadTick(0.016,true);
+  }
+}
+/* Driven from the frame loop so it runs whichever page is showing. */
+function fxPadTick(dt,force){
+  if(!PAD.on) return;
+  const sec=PAD.held?padSec(S.padAtk,PAD_ATK_MAX):padSec(S.padRel,PAD_REL_MAX);
+  if(sec<=0){ PAD.cx=PAD.tx; PAD.cy=PAD.ty; }
+  else {
+    /* time-constant approach, evaluated against real elapsed time so a dropped
+       frame shortens the step rather than the envelope */
+    const k=1-Math.exp(-dt/(sec*0.32));
+    PAD.cx+=(PAD.tx-PAD.cx)*k;
+    PAD.cy+=(PAD.ty-PAD.cy)*k;
+  }
+  /* Throttle on elapsed time, not the wall clock: REPEAT re-captures its buffer
+     whenever its bucket changes, so a moving pad must not write every frame. */
+  const slow=(PAD.ax==='rpt'||PAD.ay==='rpt');
+  PAD.acc=(PAD.acc||0)+dt;
+  if(force||PAD.acc>=(slow?0.14:0.024)){
+    PAD.acc=0;
+    if(PAD.ax) fxMove(PAD.ax,Math.max(0.02,PAD.cx));
+    if(PAD.ay&&PAD.ay!==PAD.ax) fxMove(PAD.ay,Math.max(0.02,PAD.cy));
+  }
+  /* Settling is checked every tick regardless: a throttled frame must never be
+     able to leave the pad engaged. */
+  if(!PAD.held&&PAD.cx<0.02&&PAD.cy<0.02){
+    if(PAD.ax) fxOff(PAD.ax);
+    if(PAD.ay&&PAD.ay!==PAD.ax) fxOff(PAD.ay);
+    PAD.on=0; PAD.cx=0; PAD.cy=0; PAD.acc=0; paintFx();
   }
 }
 /* P: X sets density, Y sets a ceiling on how many voices are heard. Both
@@ -3167,6 +3352,29 @@ function wire(){
   fxrow('fxxrow','fxX'); fxrow('fxyrow','fxY');
   paintFxAssign();
 
+  /* pad envelope, directly beneath the mappings */
+  {
+    const pe=document.getElementById('padenv');
+    [['padAtk','ATTACK',PAD_ATK_MAX],['padRel','RELEASE',PAD_REL_MAX]].forEach(([k,lab,max])=>{
+      const wrap=document.createElement('div'); wrap.className='sl';
+      const hd=document.createElement('div'); hd.className='hd';
+      const b=document.createElement('b'); b.textContent=lab;
+      const val=document.createElement('span');
+      hd.appendChild(b); hd.appendChild(val);
+      const inp=document.createElement('input');
+      inp.type='range'; inp.min=0; inp.max=1000; inp.step=1; inp.dataset.k=k;
+      inp.setAttribute('aria-label','Pad '+lab.toLowerCase());
+      wrap.appendChild(hd); wrap.appendChild(inp); pe.appendChild(wrap);
+      PADEL[k]={inp:inp,val:val,max:max};
+    });
+    pe.addEventListener('input',e=>{
+      const k=e.target.dataset&&e.target.dataset.k; if(!k) return;
+      S[k]=(+e.target.value)/1000; paintPadEnv();
+    });
+    pe.addEventListener('change',()=>saveVoices());
+    paintPadEnv();
+  }
+
   /* ---- scale, for tonal packs ---- */
   if(PK.tonal){
     document.getElementById('tunesec').hidden=false;
@@ -3189,6 +3397,34 @@ function wire(){
       const b=e.target.closest&&e.target.closest('button'); if(!b) return;
       S.mode=b.dataset.m; applyScale(); resetWalk(); paintScale();
     });
+    if(PK.rangeable){
+      const or2=document.getElementById('octrow');
+      [['octLo','LOW'],['octHi','HIGH']].forEach(([k,lab])=>{
+        const wrap=document.createElement('div'); wrap.className='sl';
+        const hd=document.createElement('div'); hd.className='hd';
+        const b=document.createElement('b'); b.textContent=lab;
+        const val=document.createElement('span');
+        hd.appendChild(b); hd.appendChild(val);
+        const inp=document.createElement('input');
+        inp.type='range'; inp.min=OCTMIN; inp.max=OCTMAX; inp.step=1; inp.dataset.k=k;
+        inp.setAttribute('aria-label',lab+' octave');
+        wrap.appendChild(hd); wrap.appendChild(inp); or2.appendChild(wrap);
+        OCTEL[k]={inp:inp,val:val};
+      });
+      const span=document.createElement('div'); span.id='octspan'; or2.appendChild(span);
+      OCTEL.span=span;
+      or2.addEventListener('input',e=>{
+        const k=e.target.dataset&&e.target.dataset.k; if(!k) return;
+        const v=+e.target.value;
+        /* the two always stay at least an octave apart, and whichever one you
+           are holding is the one that wins */
+        if(k==='octLo'){ S.octLo=Math.min(v,OCTMAX-1); if(S.octHi<S.octLo+1) S.octHi=S.octLo+1; }
+        else { S.octHi=Math.max(v,OCTMIN+1); if(S.octLo>S.octHi-1) S.octLo=S.octHi-1; }
+        applyRange(false); paintScale();
+      });
+      /* writing to storage on every drag frame is wasteful; do it on release */
+      or2.addEventListener('change',()=>saveVoices());
+    } else document.getElementById('octrow').hidden=true;
     paintScale();
   }
   buildFx();
@@ -3919,7 +4155,9 @@ PACKS.sferic={
   build:sfcBuild, env:sfcEnv,
   visForms:SFC_VFORMS, draw:sfcDraw,
   hue:[86,150], sat:70, lum:52,
-  fx:{rev:[3.6,2.2], dly:1.0, filtLo:180, filtHi:7000, crushBits:[3,10], crushFirst:true},
+  fx:{rev:[3.6,2.2], rev2:[11,1.1], revDamp:5200, revRelease:0.6,
+      dly:1.0, filtLo:180, filtHi:7000, crushBits:[3,10], crushFirst:true,
+      wetMax:2.2, dryDuck:0.40, revPre:0.030, revShimmer:0.0012, revFb:0.16},
   theme:{bg:'#04070a',ink:'#9fe6b4',dim:'#3c5a48',line:'#0f1a14',line2:'#1a2c22',
          now:'#e8b33a',held:'#4fd1a0',pend:'#d8ffe6'},
   visDefaults:{scale:0.60,rotate:0.06,zoom:0.22,fracture:0.40,dissolve:0.30,
@@ -4763,7 +5001,7 @@ const STR_VFORMS=[
 ];
 PACKS.strata={
   id:'strata', name:'STRATA', blurb:'RESONANT \u00b7 GRANULATED',
-  tonal:true,
+  tonal:true, rangeable:true, oct:[-2,1],
   voices:STR_VOICES,
   engines:['STRUCK','PLUCK','BOWED','TUBE','GLASS','WOOD','METAL','DEEP'],
   shapes:['SUSTAIN','GRAIN','STUTTER'],
@@ -4788,7 +5026,8 @@ PACKS.strata={
   visForms:STR_VFORMS, draw:strDraw,
   hue:[18,-96], sat:34, lum:60,      /* rust through plum to slate, never green */
   fx:{rev:[4.5,2.0], rev2:[16,1.1], revDamp:5000, revRelease:1.4,
-      dly:0.75, filtLo:110, filtHi:12000, crushBits:[3,10], crushFirst:false},
+      dly:0.75, filtLo:110, filtHi:12000, crushBits:[3,10], crushFirst:false,
+      wetMax:2.6, dryDuck:0.50, revPre:0.038, revShimmer:0.0016, revFb:0.24},
   theme:{bg:'#0a0809',ink:'#e8e0dc',dim:'#6a5f60',line:'#1c1819',line2:'#2b2527',
          now:'#c4653f',held:'#8878a6',pend:'#f2ebe8'},
   visDefaults:{scale:0.60,rotate:0.12,zoom:0.34,fracture:0.70,dissolve:0.30,
@@ -4797,7 +5036,7 @@ PACKS.strata={
 
 PACKS.cantus={
   id:'cantus', name:'CANTUS', blurb:'SUSTAINED \u00b7 DIATONIC',
-  tonal:true,
+  tonal:true, rangeable:true, oct:[-3,1],
   voices:CAN_VOICES,
   engines:['SINE','ORGAN','REED','BOW','STRING','CHOIR','BELL','PEDAL'],
   shapes:['SWELL','GATE','FADE'],
@@ -4809,7 +5048,11 @@ PACKS.cantus={
   fracture:canFracture, dissolve:canDissolve, texture:canTexture, cloud:canCloud,
   hue:[24,196], sat:38, lum:62,
   /* long and lush: a 22 second far tail, and it releases slowly */
-  fx:{rev:[7,1.6], rev2:[22,0.9], revDamp:6000, revRelease:2.4,
+  /* At the top of the control this is meant to be too much: the wet stage
+     more than triples, the dry drops to a fifth, and the tail feeds itself. */
+  fx:{rev:[9,1.2], rev2:[26,0.7], revDamp:7000, revRelease:4.0,
+      revPre:0.055, revRate:0.17, revShimmer:0.0034, revFb:0.34,
+      wetMax:3.4, dryDuck:0.80,
       dly:1.5, filtLo:80, filtHi:9000, crushBits:[4,11], crushFirst:true},
   theme:{bg:'#0d0c0b',ink:'#efe7d9',dim:'#6a6055',line:'#211e1a',line2:'#332e27',
          now:'#d98f3c',held:'#7f9c86',pend:'#f6efe2'},
@@ -4828,7 +5071,8 @@ PACKS.lattice={
   build:latticeBuild, env:latticeEnv,
   visForms:LATTICE_VFORMS, draw:latticeDraw,
   hue:[186,340], sat:82, lum:58,
-  fx:{rev:[2.8,2.6], dly:0.75, filtLo:130, filtHi:18000, crushBits:[2,9], crushFirst:false},
+  fx:{rev:[2.8,2.6], dly:0.75, filtLo:130, filtHi:18000, crushBits:[2,9], crushFirst:false,
+      wetMax:1.9, dryDuck:0.30, revPre:0.012, revShimmer:0.0006, revFb:0.10},
   theme:{bg:'#000',ink:'#e8e8e8',dim:'#5a5a5a',line:'#1e1e1e',line2:'#2e2e2e',
          now:'#ff2e88',held:'#00d9e0',pend:'#ffffff'},
   visDefaults:{scale:0.55,rotate:0.30,zoom:0.55,fracture:0.60,dissolve:0.35,
@@ -4878,7 +5122,7 @@ window.__api={launch,soloLaunch,stopAll,engineStart,engineStop,scheduler,rerollV
   doRoll,rollVoiceSound,armedVoices,openScenes,closeScenes,newScene,applyScene,captureScene,
   paintTiles,autoScene,getScenes:()=>SCENES,wipeStorage,armFollow,checkFollow,followTarget,
   fxOn,fxOff,fxMove,fxAllOff,openEditor,closeEditor,buildFx,getLive:()=>LIVE,setLive:v=>{LIVE=v;},
-  getFxOn:()=>FXON,buildScale,applyScale,scaleFreq,resetWalk,loadScenes,saveScenes,fxToggle,fxPad,patPad,visXY,remask,visBudget,
+  getFxOn:()=>FXON,buildScale,applyScale,scaleFreq,resetWalk,effBand,applyRange,rangeOf,loadScenes,saveScenes,fxToggle,fxPad,patPad,visXY,remask,visBudget,fxPadTick,getPad:()=>PAD,padSec,
   voiceOk,densKeep,densAdd,densBoost,paintModes,paintFxAssign,paintScale,resolveBars,barLabel,chainUnit,
   openVis,closeVis,visDraw,buildVis,visNote,visSave,visLoad,visShuffle,visEvent,visSceneChange,visRatchet,visVertex,visCloud,visTouchNode,visDrag,visTap,visUnproject,visTouchMap,visMark,visFeedback,visPt,visTrailPt,
   getVis:()=>VIS,
