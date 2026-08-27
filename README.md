@@ -112,9 +112,11 @@ On the patterns screen, below the grid. Nine pads. **Hold to apply, drag up for 
 
 **PAD X** and **PAD Y** choose which two effects the visualiser's FX gesture drives. Crush and Gate by default.
 
-On tonal packs, **ROOT** and **SCALE** sit above the FX section. Changing either re-tunes every voice into the new key on the next roll.
+**ATTACK** and **RELEASE**, directly beneath them, shape how the pad arrives and leaves — up to 4 seconds in, 8 seconds out. At zero both are instant, which is how the pad behaved before. Wound up, a touch becomes a slow swell and lifting off becomes a long fall. Re-touching during a release continues from where it had got to rather than restarting from nothing.
 
-SPACE crossfades as you push it: the bottom of the control is a near room, the top a long tail.
+On tonal packs, **ROOT**, **SCALE** and **RANGE** sit above the FX section. Changing root or scale re-tunes every voice into the new key. **LOW** and **HIGH** are octave sliders, each running −3 to +3 around A3, so the full span is six octaves from A0 to A6. Together they set the window every voice is placed in: all eight rows redistribute inside it, in register order, and what's already playing retunes immediately rather than waiting for the next roll. They can't cross — dragging one pushes the other, keeping at least an octave between them. Use them when the top of a drone pack gets piercing.
+
+SPACE is a wash, not a send. Pushing it lengthens the tail, raises the wet stage, ducks the dry and starts the tail feeding itself. On CANTUS the top of the control is deliberately too much — around 30 dB of wet over dry, with a 26-second tail detuning against itself.
 
 REPEAT, TAPE, PITCH and REVERSE share one buffer, so holding several stacks them: release the top and it falls back to the one underneath. If your browser can't load the audio worklet these four grey themselves out; the rest still work.
 
@@ -173,4 +175,3 @@ Pinned patterns, voice settings, scenes and visualiser preferences are stored in
 Runs in any current browser with Web Audio. The four buffer-based effects need AudioWorklet support (Safari 14.5+, Chrome 66+, Firefox 76+) and degrade gracefully without it.
 
 Everything is scheduled ahead with a lookahead clock, so it stays in time under load. If frames start slipping the visualiser thins itself automatically — particle counts first, then TRAIL and DISSOLVE — and recovers when there's headroom again.
-
